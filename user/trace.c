@@ -3,13 +3,20 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 
+int isdigitstr(char *s) {
+  for (int i = 0; s[i]; i++) {
+    if (s[i] < '0' || s[i] > '9') return 0;
+  }
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
   int i;
   char *nargv[MAXARG];
 
-  if(argc < 3 || (argv[1][0] < '0' || argv[1][0] > '9')){
+  if(argc < 3 || !isdigitstr(argv[1])){
     fprintf(2, "Usage: %s mask command\n", argv[0]);
     exit(1);
   }

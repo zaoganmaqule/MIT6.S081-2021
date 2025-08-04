@@ -84,25 +84,26 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
 struct proc {
-  struct spinlock lock;
+  struct spinlock lock;         //自旋锁
 
   // p->lock must be held when using these:
-  enum procstate state;        // Process state
-  void *chan;                  // If non-zero, sleeping on chan
-  int killed;                  // If non-zero, have been killed
-  int xstate;                  // Exit status to be returned to parent's wait
-  int pid;                     // Process ID
+  enum procstate state;        // Process state 进程状态
+  void *chan;                  // If non-zero, sleeping on chan  如果非空，说明该进程在等待某个事件
+  int killed;                  // If non-zero, have been killed  如果非空，说明该进程被标记为终止
+  int xstate;                  // Exit status to be returned to parent's wait 进程退出时返回值
+  int pid;                     // Process ID  进程ID
 
   // wait_lock must be held when using this:
-  struct proc *parent;         // Parent process
+  struct proc *parent;         // Parent process  父进程
 
   // these are private to the process, so p->lock need not be held.
-  uint64 kstack;               // Virtual address of kernel stack
-  uint64 sz;                   // Size of process memory (bytes)
-  pagetable_t pagetable;       // User page table
-  struct trapframe *trapframe; // data page for trampoline.S
-  struct context context;      // swtch() here to run process
-  struct file *ofile[NOFILE];  // Open files
-  struct inode *cwd;           // Current directory
-  char name[16];               // Process name (debugging)
+  uint64 kstack;               // Virtual address of kernel stack 内核栈起始地址
+  uint64 sz;                   // Size of process memory (bytes)  用户态进程拥有虚拟内存大小
+  pagetable_t pagetable;       // User page table  该进程的用户页表，用于用户态地址到物理内存的映射
+  struct trapframe *trapframe; // data page for trampoline.S  保存中断，系统调用发生时用户态寄存器的快照
+  struct context context;      // swtch() here to run process 切换进程上下文
+  struct file *ofile[NOFILE];  // Open files 打开文件表
+  struct inode *cwd;           // Current directory 当前工作目录
+  char name[16];               // Process name (debugging) 进程名字
+  uint32 trace_mask;            //the syscall this proc is tracing 记录要追踪那些系统调用
 };
