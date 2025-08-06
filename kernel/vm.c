@@ -469,28 +469,33 @@ void vmprint(pagetable_t pagetable) {
   vmprint_proc(pagetable, 0);
 }
 
-int pgaccess(pagetable_t pagetable,uint64 start_va, int page_num, uint64 result_va)
+int pgaccess(pagetable_t pagetable, uint64 start_va, int page_num, uint64 result_va)
 {
   if (page_num > 64)
   {
-    panic("pgaccess: too much pages");
+    panic("pgaccess: too many pages");
     return -1;
   }
+
   unsigned int bitmask = 0;
-  int cur_bitmask = 1;
-  int count = 0;
   uint64 va = start_va;
-  pte_t *pte;
-  for (; count < page_num; count++, va += PGSIZE)
+
+  for (int count = 0; count < page_num; count++, va += PGSIZE)
   {
-    if ((pte = walk(pagetable, va, 0)) == 0)
+    pte_t *pte = walk(pagetable, va, 0);
+    if (pte == 0)
       panic("pgaccess: pte should exist");
-    if ((*pte & PTE_A))
+
+    if (*pte & PTE_A)
     {
-      bitmask |= (cur_bitmask<<count);
-      *pte &= ~PTE_A;
+      bitmask |= (1U << count);
+      *pte &= ~PTE_A;  // clear A bit
     }
   }
-  copyout(pagetable,result_va,(char*)&bitmask,sizeof(bitmask));
+
+  // FIX: use myproc()->pagetable, NOT the input pagetable
+  if (copyout(myproc()->pagetable, result_va, (char*)&bitmask, sizeof(bitmask)) < 0)
+    return -1;
+
   return 0;
 }
