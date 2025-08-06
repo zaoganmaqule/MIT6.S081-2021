@@ -164,6 +164,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
 }
 
 // Create a user page table for a given process,
@@ -195,6 +196,18 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
+  //如果在allocproc里面分配物理内存，存在一个问题物理内存没有映射。而在这里申请直接可以映射。防止出来MMU缺页
+  p->usyscall = (struct usyscall *)kalloc();
+  p->usyscall->pid = p->pid;
+
+  if(mappages(pagetable, USYSCALL, PGSIZE,
+              (uint64)(p->usyscall), PTE_R | PTE_U) < 0){
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    kfree(p->usyscall);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
 
   return pagetable;
 }
@@ -204,8 +217,10 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
+  kfree((char *)walkaddr(pagetable,USYSCALL));
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmfree(pagetable, sz);
 }
 

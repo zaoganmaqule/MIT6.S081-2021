@@ -5,7 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
+#include "spinlock.h"
+#include "proc.h"
 /*
  * the kernel's page table.
  */
@@ -431,4 +432,65 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+void print_level(int level) {
+  switch(level) {
+    case 0: printf(" .."); break;
+    case 1: printf(" .. .."); break;
+    case 2: printf(" .. .. .."); break;
+    default: break;
+  }
+}
+void vmprint_proc(pagetable_t pagetable, int level) {
+  // there are 2^9 = 512 PTEs in a page table.
+  if (level > 3)
+    return;
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) { //判断其是否有效
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte); //提取页表的物理地址
+      print_level(level);
+      printf("%d: pte %p pa %p\n", i, pte, child);
+      vmprint_proc((pagetable_t)child, level + 1); //访问下一级
+    } else 
+    if (pte & PTE_V) { //没效则没有下一页，直接打印该层页表即可
+      // this PTE is in a leaf page table.
+      uint64 pa = PTE2PA(pte);
+      print_level(level);
+      printf("%d: pte %p pa %p\n", i, pte, pa);
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable) {
+  printf("page table %p\n",pagetable);
+  vmprint_proc(pagetable, 0);
+}
+
+int pgaccess(pagetable_t pagetable,uint64 start_va, int page_num, uint64 result_va)
+{
+  if (page_num > 64)
+  {
+    panic("pgaccess: too much pages");
+    return -1;
+  }
+  unsigned int bitmask = 0;
+  int cur_bitmask = 1;
+  int count = 0;
+  uint64 va = start_va;
+  pte_t *pte;
+  for (; count < page_num; count++, va += PGSIZE)
+  {
+    if ((pte = walk(pagetable, va, 0)) == 0)
+      panic("pgaccess: pte should exist");
+    if ((*pte & PTE_A))
+    {
+      bitmask |= (cur_bitmask<<count);
+      *pte &= ~PTE_A;
+    }
+  }
+  copyout(pagetable,result_va,(char*)&bitmask,sizeof(bitmask));
+  return 0;
 }
