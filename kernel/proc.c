@@ -141,6 +141,17 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  if ((p->saved_trapframe = (struct trapframe *)kalloc()) == 0) {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  p->alarm_handler = 0;
+  p->alarm_interval = 0;
+  p->ticks = 0;
+  p->alarm_enables = 0;
+
   return p;
 }
 
@@ -155,6 +166,12 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+
+  if (p->saved_trapframe) {
+    kfree((void *)p->saved_trapframe);
+    p->saved_trapframe = 0;
+  }
+
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
