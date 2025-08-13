@@ -23,9 +23,22 @@ struct {
   struct run *freelist;
 } kmem;
 
+//lab cow
+#define PA2INDEX(pa) (((uint64)pa - KERNBASE) / PGSIZE)
+
+struct page_ref {
+  struct spinlock lock;
+  int count;
+};
+
+struct page_ref cow_arr[(PHYSTOP - KERNBASE) / PGSIZE];
+
 void
 kinit()
 {
+  for (int i = 0; i < (PHYSTOP - KERNBASE) / PGSIZE; i++) {
+    initlock(&cow_arr[i].lock, "cow");
+  }
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
 }
@@ -35,8 +48,10 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE) {
+    cow_arr[PA2INDEX(p)].count = 1;
     kfree(p);
+  }
 }
 
 // Free the page of physical memory pointed at by v,
@@ -51,15 +66,31 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  int idx = PA2INDEX(pa);
+  acquire(&cow_arr[idx].lock);
+  //先判断count是否为0，在修改。防止多次free同一个物理页
+  if (cow_arr[idx].count == 0) {
+    release(&cow_arr[idx].lock);
+    panic("kfree: too much times");
+  }
+  cow_arr[idx].count--;
+  if (cow_arr[idx].count != 0) {
+    release(&cow_arr[idx].lock);
+    return ;
+  } else {
+    // Fill with junk to catch dangling refs.
+    memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
+    r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+    acquire(&kmem.lock);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    release(&kmem.lock);
+
+    release(&cow_arr[idx].lock);
+  }
+  
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -72,11 +103,38 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
+
+    int idx = PA2INDEX(r);
+    acquire(&cow_arr[idx].lock);
+    cow_arr[idx].count = 1;
+    release(&cow_arr[idx].lock);
+
     kmem.freelist = r->next;
+  }
+    
   release(&kmem.lock);
 
-  if(r)
+  if(r) {
     memset((char*)r, 5, PGSIZE); // fill with junk
+    
+  }
+  
   return (void*)r;
+}
+
+//helper函数
+void adjust_ref(uint64 pa, int num) {
+  if (pa >= PHYSTOP) {
+    panic("adjust_ref: pa too big");
+  }
+  int idx = PA2INDEX(pa);
+  acquire(&cow_arr[idx].lock);
+  cow_arr[idx].count += num;
+  release(&cow_arr[idx].lock);
+
+}
+
+int read_ref(void *pa) {
+  return cow_arr[PA2INDEX(pa)].count;
 }

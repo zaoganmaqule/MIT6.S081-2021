@@ -20,6 +20,7 @@ barrier_init(void)
   assert(pthread_mutex_init(&bstate.barrier_mutex, NULL) == 0);
   assert(pthread_cond_init(&bstate.barrier_cond, NULL) == 0);
   bstate.nthread = 0;
+  bstate.round = 0;
 }
 
 static void 
@@ -30,7 +31,22 @@ barrier()
   // Block until all threads have called barrier() and
   // then increment bstate.round.
   //
-  
+  pthread_mutex_lock(&bstate.barrier_mutex);
+  bstate.nthread++;
+  int current_round = bstate.round;
+
+  if (bstate.nthread == nthread) { //最后一个线程也到达了
+    bstate.nthread = 0;
+    bstate.round++;
+    pthread_cond_broadcast(&bstate.barrier_cond);
+  } else {
+    while (current_round == bstate.round) { //如果还在本轮继续睡眠
+      pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+    }
+  }
+
+  pthread_mutex_unlock(&bstate.barrier_mutex);
+
 }
 
 static void *
@@ -65,7 +81,7 @@ main(int argc, char *argv[])
   nthread = atoi(argv[1]);
   tha = malloc(sizeof(pthread_t) * nthread);
   srandom(0);
-
+  
   barrier_init();
 
   for(i = 0; i < nthread; i++) {

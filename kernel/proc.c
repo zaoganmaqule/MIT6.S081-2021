@@ -538,7 +538,7 @@ sleep(void *chan, struct spinlock *lk)
   // so it's okay to release lk.
 
   acquire(&p->lock);  //DOC: sleeplock1
-  release(lk);
+  release(lk);  //调度只能持有该线程（进程）的锁
 
   // Go to sleep.
   p->chan = chan;

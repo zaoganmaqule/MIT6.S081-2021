@@ -65,6 +65,30 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 15 || r_scause() == 13) {
+    uint64 va = r_stval();
+    if (cowcheck(p->pagetable, va) != 0) { //检查是否共享页
+      p->killed = 1;
+    } else {
+      va = PGROUNDDOWN(va);
+      pte_t *pte = walk(p->pagetable, va, 0);
+      uint64 old_pa = PTE2PA(*pte);
+      if (read_ref((void *)old_pa) == 1) { //此时页的属于还是有C，但是ref只有1.所以要给他去掉。加不加都行，都可以过check
+        *pte |= PTE_W;
+        *pte &= (~PTE_C);
+      }
+       else {  
+          uint64 new_pa = (uint64)kalloc();
+          if (new_pa == 0) {
+            p->killed = 1;
+          } else {
+            memmove((void *)new_pa, (void *)old_pa, PGSIZE);
+            *pte = PA2PTE(new_pa) | PTE_FLAGS(*pte) | PTE_W;
+            *pte &= (~PTE_C);
+            kfree((void *)old_pa);
+          }  
+        }
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
