@@ -36,6 +36,7 @@ struct dinode {
   short nlink;          // Number of links to inode in file system
   uint size;            // Size of file (bytes)
   uint addrs[NDIRECT+1];   // Data block addresses
+  //0-11放的是直接块，12放的是间接块的地址，因为其块大小是1024所以可以存放1024 / 4 = 256 个块
 };
 
 // Inodes per block.
