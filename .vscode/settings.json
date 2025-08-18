@@ -2,5 +2,12 @@
     "files.associations": {
         "proc.h": "c",
         "defs.h": "c"
-    }
+    },
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "/home/oxarch/xv6-labs-2021/kernel",
+            "binaryPath": "/home/oxarch/xv6-labs-2021/kernel/kernel",
+            "binaryArgs": []
+        }
+    ]
 }

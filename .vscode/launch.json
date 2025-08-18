@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to xv6 QEMU",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/kernel/kernel",  
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": true,          
+      "externalConsole": false,
+
+      // QEMU gdb stub 地址和端口
+      "miDebuggerServerAddress": "localhost:26000",  
+
+      // 虚拟机里交叉 GDB 路径
+      "miDebuggerPath": "/usr/bin/gdb-multiarch",
+
+      // 可选：调试器初始化命令
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}
