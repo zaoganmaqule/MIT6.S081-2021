@@ -5,6 +5,7 @@
 #include "kernel/riscv.h"
 #include "kernel/fs.h"
 #include "user/user.h"
+#include "kernel/fcntl.h"
 
 void mmap_test();
 void fork_test();

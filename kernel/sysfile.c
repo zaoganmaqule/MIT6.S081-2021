@@ -484,3 +484,88 @@ sys_pipe(void)
   }
   return 0;
 }
+
+//lab
+uint64
+sys_mmap(void) {
+  struct proc* p = myproc();
+  uint64 addr;
+  int length,  prot, flags, fd, offset;
+  struct file* f;
+
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &prot) < 0 
+      || argint(3, &flags) < 0 || argfd(4, &fd, &f) < 0 || argint(5, &offset) < 0) {
+        return -1;
+      }
+
+  length = PGROUNDUP(length);
+  addr = PGROUNDDOWN(addr);
+
+  if ((MAXVA - length) < p->sz) return -1;
+  if (!f->readable && (prot & PROT_READ)) return -1;
+  if (!f->writable && (prot & PROT_WRITE) && (flags == MAP_SHARED)) return -1;
+    
+  for (int i = 0; i < NVMA; i++) {
+    struct vma* vma = &p->vmas[i];
+    if (vma->used == 0) {
+      vma->used = 1;
+      vma->addr = p->sz;
+      p->sz += length;
+      vma->length = length;
+      vma->prot = prot;
+      vma->flags = flags;
+      vma->f = f;
+      vma->offset = offset;
+      filedup(f);
+      return vma->addr;
+    }
+
+  }
+  return -1;
+
+}
+
+uint64
+sys_munmap(void) {
+  uint64 addr;
+  int length;
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0) return -1;
+
+  struct proc* p = myproc();
+  struct vma* vma = 0;
+
+  for (int i = 0; i < NVMA; i++) {
+    if (p->vmas[i].used && addr >= p->vmas[i].addr && addr < p->vmas[i].addr + p->vmas[i].length) {
+      vma = &p->vmas[i];
+      break;
+    }
+  }
+
+  if (vma == 0) return -1;//没有这块区域
+
+  addr = PGROUNDDOWN(addr);
+  length = PGROUNDUP(length);
+
+  if (vma->flags & MAP_SHARED) { //共享要写回
+    // int off = vma->offset + (addr - vma->addr);
+    filewrite(vma->f, addr, length);
+  }
+  //取消页面映射
+  uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+
+  if (addr == vma->addr && length == vma->length) {
+    fileclose(vma->f);
+    vma->used = 0;
+  } else if (addr == vma->addr) {
+    vma->addr += length;
+    vma->length -= length;
+    vma->offset += length;
+  } else if ((addr + length) == (vma->addr + vma->length)) {
+    vma->length -= length;
+  } else {
+    panic("munmap: unmap middle of VMA of supported!");
+  }
+
+  return 0;
+}
+

@@ -1,10 +1,14 @@
 #include "types.h"
+#include "fcntl.h"
 #include "param.h"
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "sleeplock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -67,7 +71,44 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    uint64 va = r_stval();
+    int found = 0;
+    if (va > MAXVA || va > p->sz) {
+      p->killed = 1;
+    } else {
+      for (int i = 0; i < NVMA; i++) {
+        struct vma* vma = &p->vmas[i];
+        if (vma->used && va >= vma->addr && va < vma->addr + vma->length) {
+          uint64 pa;
+          if ((pa = (uint64)kalloc()) == 0) {
+            panic("usertrap: kalloc error!");
+          }
+          memset((void *)pa, 0, PGSIZE);
+          va = PGROUNDDOWN(va);
+          //分配内存并把数据写入
+          ilock(vma->f->ip);
+          if (readi(vma->f->ip, 0, pa, vma->offset + va - vma->addr, PGSIZE) < 0) {
+            iunlock(vma->f->ip);
+            break;
+          }
+          iunlock(vma->f->ip);
+          int perm = PTE_U | PTE_V; //因为分配直接拿的内核页面，无需页表检查
+          if (vma->prot & PROT_READ) perm |= PTE_R;
+          if (vma->prot & PROT_WRITE) perm |= PTE_W;
+          if (vma->prot & PROT_EXEC) perm |= PTE_X;
+
+          if (mappages(p->pagetable, va, PGSIZE, pa, perm) < 0) {
+            kfree((void*)pa);
+            break;
+          }
+          found = 1;
+          break;
+        }
+      }
+      if (!found) p->killed = 1;
+    }
+  }else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;

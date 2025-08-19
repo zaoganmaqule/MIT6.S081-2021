@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "fcntl.h"
 #include "defs.h"
 
 struct cpu cpus[NCPU];
@@ -140,6 +141,8 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  
+  memset((void *)&p->vmas, 0, sizeof(p->vmas));
 
   return p;
 }
@@ -289,6 +292,15 @@ fork(void)
   }
   np->sz = p->sz;
 
+  //copy vmas
+  memset((void *)&np->vmas, 0, sizeof(np->vmas));
+  for (int i = 0; i < NVMA; i++) {
+    if (p->vmas[i].used) {
+      memmove(&np->vmas[i], &p->vmas[i], sizeof(struct vma));
+      filedup(p->vmas[i].f);
+    }
+  }
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -304,7 +316,7 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
-
+  
   release(&np->lock);
 
   acquire(&wait_lock);
@@ -353,8 +365,20 @@ exit(int status)
     }
   }
 
+  for (int i = 0; i < NVMA; i++) { //exit在释放，如果是共享则回写
+    if (p->vmas[i].used) {
+      if (p->vmas[i].flags & MAP_SHARED) {
+        filewrite(p->vmas[i].f, p->vmas[i].addr, p->vmas[i].length);
+      }
+      fileclose(p->vmas[i].f);
+      uvmunmap(p->pagetable, p->vmas[i].addr, p->vmas[i].length / PGSIZE, 1);
+      p->vmas[i].used = 0;
+    }
+  }
+
   begin_op();
   iput(p->cwd);
+
   end_op();
   p->cwd = 0;
 
